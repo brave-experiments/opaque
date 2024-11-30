@@ -40,15 +40,15 @@ func TestClientRegistrationFinalize_InvalidPks(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, pks := conf.conf.KeyGen()
+		sks, pks := conf.conf.KeyGen()
 		oprfSeed := internal.RandomBytes(conf.conf.Hash.Size())
 		r1 := client.RegistrationInit([]byte("yo"))
 
-		pk := server.GetConf().Group.NewElement()
-		if err := pk.Decode(pks); err != nil {
-			panic(err)
+		server.SetKeyMaterial([]byte("server"), sks, pks, oprfSeed, nil)
+		r2, err := server.RegistrationResponse(r1, credID)
+		if err != nil {
+			t.Fatalf("failed to generate registration response: %v", err)
 		}
-		r2 := server.RegistrationResponse(r1, pk, credID, oprfSeed)
 
 		// message length
 		badr2 := internal.RandomBytes(15)
@@ -127,11 +127,11 @@ func TestClientFinish_BadMaskedResponse(t *testing.T) {
 		sks, pks := conf.conf.KeyGen()
 		oprfSeed := internal.RandomBytes(conf.conf.Hash.Size())
 
-		if err := server.SetKeyMaterial(nil, sks, pks, oprfSeed); err != nil {
+		if err := server.SetKeyMaterial(nil, sks, pks, oprfSeed, nil); err != nil {
 			t.Fatal(err)
 		}
 
-		rec := buildRecord(credID, oprfSeed, []byte("yo"), pks, client, server)
+		rec := buildRecord(credID, oprfSeed, []byte("yo"), sks, pks, client, server, false)
 
 		ke1 := client.GenerateKE1([]byte("yo"))
 		ke2, _ := server.GenerateKE2(ke1, rec)
@@ -173,11 +173,11 @@ func TestClientFinish_InvalidEnvelopeTag(t *testing.T) {
 		sks, pks := conf.conf.KeyGen()
 		oprfSeed := internal.RandomBytes(conf.conf.Hash.Size())
 
-		if err := server.SetKeyMaterial(nil, sks, pks, oprfSeed); err != nil {
+		if err := server.SetKeyMaterial(nil, sks, pks, oprfSeed, nil); err != nil {
 			t.Fatal(err)
 		}
 
-		rec := buildRecord(credID, oprfSeed, []byte("yo"), pks, client, server)
+		rec := buildRecord(credID, oprfSeed, []byte("yo"), sks, pks, client, server, false)
 
 		ke1 := client.GenerateKE1([]byte("yo"))
 		ke2, _ := server.GenerateKE2(ke1, rec)
@@ -231,11 +231,11 @@ func TestClientFinish_InvalidKE2KeyEncoding(t *testing.T) {
 		sks, pks := conf.conf.KeyGen()
 		oprfSeed := internal.RandomBytes(conf.conf.Hash.Size())
 
-		if err := server.SetKeyMaterial(nil, sks, pks, oprfSeed); err != nil {
+		if err := server.SetKeyMaterial(nil, sks, pks, oprfSeed, nil); err != nil {
 			t.Fatal(err)
 		}
 
-		rec := buildRecord(credID, oprfSeed, []byte("yo"), pks, client, server)
+		rec := buildRecord(credID, oprfSeed, []byte("yo"), sks, pks, client, server, false)
 
 		ke1 := client.GenerateKE1([]byte("yo"))
 		ke2, _ := server.GenerateKE2(ke1, rec)
@@ -314,11 +314,11 @@ func TestClientFinish_InvalidKE2Mac(t *testing.T) {
 		sks, pks := conf.conf.KeyGen()
 		oprfSeed := internal.RandomBytes(conf.conf.Hash.Size())
 
-		if err := server.SetKeyMaterial(nil, sks, pks, oprfSeed); err != nil {
+		if err := server.SetKeyMaterial(nil, sks, pks, oprfSeed, nil); err != nil {
 			log.Fatal(err)
 		}
 
-		rec := buildRecord(credID, oprfSeed, []byte("yo"), pks, client, server)
+		rec := buildRecord(credID, oprfSeed, []byte("yo"), sks, pks, client, server, false)
 
 		ke1 := client.GenerateKE1([]byte("yo"))
 		ke2, _ := server.GenerateKE2(ke1, rec)
