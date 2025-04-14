@@ -1,6 +1,7 @@
 module github.com/bytemare/opaque
 
 go 1.22.2
+toolchain go1.24.1
 
 require (
 	github.com/bytemare/crypto v0.6.0
@@ -14,6 +15,6 @@ require (
 	github.com/bytemare/hash2curve v0.3.0 // indirect
 	github.com/bytemare/secp256k1 v0.1.2 // indirect
 	github.com/gtank/ristretto255 v0.1.2 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/crypto v0.35.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
 )
