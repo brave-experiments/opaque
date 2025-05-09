@@ -106,7 +106,7 @@ func Example_serverSetup() {
 		log.Fatalln(err)
 	}
 
-	if err := server.SetKeyMaterial(serverID, serverPrivateKey, serverPublicKey, secretOprfSeed); err != nil {
+	if err := server.SetKeyMaterial(serverID, serverPrivateKey, serverPublicKey, secretOprfSeed, nil); err != nil {
 		log.Fatalln(err)
 	}
 
@@ -232,13 +232,16 @@ func Example_registration() {
 		// The server creates a database entry for the client and creates a credential identifier that must absolutely
 		// be unique among all clients.
 		credID = opaque.RandomBytes(64)
-		pks, err := server.Deserialize.DecodeAkePublicKey(serverPublicKey)
-		if err != nil {
+
+		if err = server.SetKeyMaterial(serverID, serverPrivateKey, serverPublicKey, secretOprfSeed, nil); err != nil {
 			log.Fatalln(err)
 		}
 
 		// The server uses its public key and secret OPRF seed created at the setup.
-		response := server.RegistrationResponse(request, pks, credID, secretOprfSeed)
+		response, err := server.RegistrationResponse(request, credID)
+		if err != nil {
+			log.Fatalln(err)
+		}
 
 		// The server responds with its serialized response.
 		message2 = response.Serialize()
@@ -308,7 +311,7 @@ func Example_loginKeyExchange() {
 		log.Fatalln(err)
 	}
 
-	if err := server.SetKeyMaterial(serverID, serverPrivateKey, serverPublicKey, secretOprfSeed); err != nil {
+	if err := server.SetKeyMaterial(serverID, serverPrivateKey, serverPublicKey, secretOprfSeed, nil); err != nil {
 		log.Fatalln(err)
 	}
 
@@ -424,7 +427,7 @@ func Example_fakeResponse() {
 			log.Fatalln(err)
 		}
 
-		if err := server.SetKeyMaterial(serverID, serverPrivateKey, serverPublicKey, secretOprfSeed); err != nil {
+		if err := server.SetKeyMaterial(serverID, serverPrivateKey, serverPublicKey, secretOprfSeed, nil); err != nil {
 			log.Fatalln(err)
 		}
 

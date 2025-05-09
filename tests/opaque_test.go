@@ -96,12 +96,14 @@ func testRegistration(t *testing.T, p *testParams) (*opaque.Client, *opaque.Serv
 		}
 
 		credID = internal.RandomBytes(32)
-		pks, err := server.Deserialize.DecodeAkePublicKey(p.serverPublicKey)
+
+		if err := server.SetKeyMaterial(p.serverID, p.serverSecretKey, p.serverPublicKey, p.oprfSeed, nil); err != nil {
+			t.Fatalf(dbgErr, err)
+		}
+		respReg, err := server.RegistrationResponse(m1, credID)
 		if err != nil {
 			t.Fatalf(dbgErr, err)
 		}
-
-		respReg := server.RegistrationResponse(m1, pks, credID, p.oprfSeed)
 
 		m2s = respReg.Serialize()
 	}
@@ -163,7 +165,7 @@ func testAuthentication(
 	var state []byte
 	server, _ := p.Server()
 	{
-		if err := server.SetKeyMaterial(p.serverID, p.serverSecretKey, p.serverPublicKey, p.oprfSeed); err != nil {
+		if err := server.SetKeyMaterial(p.serverID, p.serverSecretKey, p.serverPublicKey, p.oprfSeed, nil); err != nil {
 			t.Fatal(err)
 		}
 

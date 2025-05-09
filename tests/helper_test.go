@@ -167,9 +167,10 @@ func getBadScalar(t *testing.T, c *configuration) []byte {
 }
 
 func buildRecord(
-	credID, oprfSeed, password, pks []byte,
+	credID, oprfSeed, password, sks, pks []byte,
 	client *opaque.Client,
 	server *opaque.Server,
+	noServerID bool,
 ) *opaque.ClientRecord {
 	conf := server.GetConf()
 	r1 := client.RegistrationInit(password)
@@ -178,8 +179,18 @@ func buildRecord(
 	if err := pk.Decode(pks); err != nil {
 		panic(err)
 	}
+	var serverID []byte
+	if !noServerID {
+		serverID = []byte("server")
+	}
 
-	r2 := server.RegistrationResponse(r1, pk, credID, oprfSeed)
+	if err := server.SetKeyMaterial(serverID, sks, pks, oprfSeed, nil); err != nil {
+		panic(err)
+	}
+	r2, err := server.RegistrationResponse(r1, credID)
+	if err != nil {
+		panic(err)
+	}
 	r3, _ := client.RegistrationFinalize(r2)
 
 	return &opaque.ClientRecord{

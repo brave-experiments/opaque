@@ -66,13 +66,13 @@ func TestServerInit_InvalidPublicKey(t *testing.T) {
 		oprfSeed := internal.RandomBytes(conf.conf.Hash.Size())
 
 		expected := "input server public key's length is invalid"
-		if err := server.SetKeyMaterial(nil, sk, nil, oprfSeed); err == nil ||
+		if err := server.SetKeyMaterial(nil, sk, nil, oprfSeed, nil); err == nil ||
 			!strings.HasPrefix(err.Error(), expected) {
 			t.Fatalf("expected error on nil pubkey - got %s", err)
 		}
 
 		expected = "invalid server public key: "
-		if err := server.SetKeyMaterial(nil, sk, getBadElement(t, conf), oprfSeed); err == nil ||
+		if err := server.SetKeyMaterial(nil, sk, getBadElement(t, conf), oprfSeed, nil); err == nil ||
 			!strings.HasPrefix(err.Error(), expected) {
 			t.Fatalf("expected error on bad secret key - got %s", err)
 		}
@@ -91,17 +91,17 @@ func TestServerInit_InvalidOPRFSeedLength(t *testing.T) {
 		sk, pk := conf.conf.KeyGen()
 		expected := opaque.ErrInvalidOPRFSeedLength
 
-		if err := server.SetKeyMaterial(nil, sk, pk, nil); err == nil || !errors.Is(err, expected) {
+		if err := server.SetKeyMaterial(nil, sk, pk, nil, nil); err == nil || !errors.Is(err, expected) {
 			t.Fatalf("expected error on nil seed - got %s", err)
 		}
 
 		seed := internal.RandomBytes(conf.conf.Hash.Size() - 1)
-		if err := server.SetKeyMaterial(nil, sk, pk, seed); err == nil || !errors.Is(err, expected) {
+		if err := server.SetKeyMaterial(nil, sk, pk, seed, nil); err == nil || !errors.Is(err, expected) {
 			t.Fatalf("expected error on bad seed - got %s", err)
 		}
 
 		seed = internal.RandomBytes(conf.conf.Hash.Size() + 1)
-		if err := server.SetKeyMaterial(nil, sk, pk, seed); err == nil || !errors.Is(err, expected) {
+		if err := server.SetKeyMaterial(nil, sk, pk, seed, nil); err == nil || !errors.Is(err, expected) {
 			t.Fatalf("expected error on bad seed - got %s", err)
 		}
 	})
@@ -119,7 +119,7 @@ func TestServerInit_NilSecretKey(t *testing.T) {
 		_, pk := conf.conf.KeyGen()
 		expected := "invalid server AKE secret key: "
 
-		if err := server.SetKeyMaterial(nil, nil, pk, nil); err == nil ||
+		if err := server.SetKeyMaterial(nil, nil, pk, nil, nil); err == nil ||
 			!strings.HasPrefix(err.Error(), expected) {
 			t.Fatalf("expected error on nil secret key - got %s", err)
 		}
@@ -146,7 +146,7 @@ func TestServerInit_ZeroSecretKey(t *testing.T) {
 			expected = "invalid server AKE secret key: scalar Decode: invalid scalar length"
 		}
 
-		if err := server.SetKeyMaterial(nil, sk[:], nil, nil); err == nil ||
+		if err := server.SetKeyMaterial(nil, sk[:], nil, nil, nil); err == nil ||
 			!strings.HasPrefix(err.Error(), expected) {
 			t.Fatalf("expected error on nil secret key - got %s", err)
 		}
@@ -183,7 +183,7 @@ func TestServerInit_InvalidEnvelope(t *testing.T) {
 		sk, pk := conf.conf.KeyGen()
 		oprfSeed := internal.RandomBytes(conf.conf.Hash.Size())
 
-		if err := server.SetKeyMaterial(nil, sk, pk, oprfSeed); err != nil {
+		if err := server.SetKeyMaterial(nil, sk, pk, oprfSeed, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -191,7 +191,7 @@ func TestServerInit_InvalidEnvelope(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rec := buildRecord(internal.RandomBytes(32), oprfSeed, []byte("yo"), pk, client, server)
+		rec := buildRecord(internal.RandomBytes(32), oprfSeed, []byte("yo"), sk, pk, client, server, false)
 		rec.Envelope = internal.RandomBytes(15)
 
 		expected := "record has invalid envelope length"
@@ -259,10 +259,7 @@ func TestServerFinish_InvalidKE3Mac(t *testing.T) {
 	client, _ := conf.Client()
 	server, _ := conf.Server()
 	sk, pk := conf.KeyGen()
-	if err := server.SetKeyMaterial(nil, sk, pk, oprfSeed); err != nil {
-		t.Fatal(err)
-	}
-	rec := buildRecord(credId, oprfSeed, password, pk, client, server)
+	rec := buildRecord(credId, oprfSeed, password, sk, pk, client, server, true)
 	ke1 := client.GenerateKE1(password)
 	ke2, err := server.GenerateKE2(ke1, rec)
 	if err != nil {
@@ -303,9 +300,9 @@ func TestServerSetAKEState_InvalidInput(t *testing.T) {
 	client, _ := conf.Client()
 	server, _ = conf.Server()
 	sk, pk := conf.KeyGen()
-	rec := buildRecord(credId, seed, password, pk, client, server)
+	rec := buildRecord(credId, seed, password, sk, pk, client, server, false)
 	ke1 := client.GenerateKE1(password)
-	_ = server.SetKeyMaterial(nil, sk, pk, seed)
+	_ = server.SetKeyMaterial(nil, sk, pk, seed, nil)
 	_, _ = server.GenerateKE2(ke1, rec)
 	state := server.SerializeState()
 	if err := server.SetAKEState(state); err == nil || err.Error() != errStateExists.Error() {
