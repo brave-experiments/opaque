@@ -80,6 +80,26 @@ func TestClientRegistrationFinalize_InvalidPks(t *testing.T) {
 	})
 }
 
+func TestClientRegistrationFinalize_InvalidInput(t *testing.T) {
+	/*
+		Invalid input used by the client
+	*/
+	testAll(t, func(t2 *testing.T, conf *configuration) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("Expected panic, but got none")
+			}
+		}()
+
+		client, err := conf.conf.Client()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		client.RegistrationInit([]byte("")) // Should panic on empty input
+	})
+}
+
 func TestClientFinish_BadEvaluation(t *testing.T) {
 	/*
 		Oprf finalize : evaluation deserialization // element decoding

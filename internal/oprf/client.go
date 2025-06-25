@@ -28,6 +28,10 @@ type Client struct {
 
 // Blind masks the input.
 func (c *Client) Blind(input []byte, blind *ecc.Scalar) *ecc.Element {
+	if len(input) == 0 {
+		panic("Input must not be empty")
+	}
+
 	if blind != nil {
 		c.blind = blind.Copy()
 	} else {
@@ -45,6 +49,11 @@ func (c *Client) Blind(input []byte, blind *ecc.Scalar) *ecc.Element {
 }
 
 func (c *Client) hashTranscript(input, unblinded []byte) []byte {
+	// Unlikely to be reached
+	if len(input) == 0 {
+		panic("Input must not be empty")
+	}
+
 	encInput := encoding.EncodeVector(input)
 	encElement := encoding.EncodeVector(unblinded)
 	encDST := []byte(tag.OPRFFinalize)
