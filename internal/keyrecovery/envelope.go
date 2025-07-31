@@ -11,6 +11,7 @@ package keyrecovery
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/bytemare/ecc"
 
@@ -37,6 +38,21 @@ type Envelope struct {
 // Serialize returns the byte serialization of the envelope.
 func (e *Envelope) Serialize() []byte {
 	return encoding.Concat(e.Nonce, e.AuthTag)
+}
+
+// DeserializeEnvelope parses the byte slice back into an Envelope.
+// It assumes the nonce and auth tag are of known fixed lengths.
+func (e *Envelope) DeserializeEnvelope(data []byte, c *internal.Configuration) (*Envelope, error) {
+	if len(data) != internal.NonceLength+c.MAC.Size() {
+		return nil, fmt.Errorf("invalid envelope length")
+	}
+
+	env := &Envelope{
+		Nonce:   data[:internal.NonceLength],
+		AuthTag: data[internal.NonceLength : internal.NonceLength+c.MAC.Size()],
+	}
+
+	return env, nil
 }
 
 func exportKey(conf *internal.Configuration, randomizedPassword, nonce []byte) []byte {
@@ -81,7 +97,7 @@ func Store(
 ) (env *Envelope, pku *ecc.Element, export []byte) {
 	// testing: integrated to support testing with set nonce
 	nonce := credentials.EnvelopeNonce
-	if nonce == nil {
+	if nonce == nil { // TODO: is this needed?
 		nonce = internal.RandomBytes(conf.NonceLen)
 	}
 

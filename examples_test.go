@@ -280,6 +280,111 @@ func Example_registration() {
 	// OPAQUE registration is easy!
 }
 
+// Example_Check_Registration demonstrates in a single function the interactions between a client and a server for the
+// registration phase. This is of course a proof-of-concept demonstration, as client and server execute separately.
+// The server outputs a ClientRecord and the credential identifier. The latter is a unique identifier for  a given
+// client (e.g. database entry ID), and that must absolutely stay the same for the whole client existence and
+// never be reused.
+func Example_check_registration() {
+	// The server must have been set up with its long term values once. So we're calling this, here, for the demo.
+	{
+		Example_serverSetup()
+	}
+
+	// Secret client information.
+	password := []byte("")
+
+	// Information shared by both client and server.
+	serverID := []byte("server")
+	clientID := []byte("username")
+	conf := opaque.DefaultConfiguration()
+
+	// Runtime instantiation for the client and server.
+	client, err := conf.Client()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	server, err := conf.Server()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// These are the 3 registration messages that will be exchanged.
+	// The credential identifier credID is a unique identifier for a given client (e.g. database entry ID), and that
+	// must absolutely stay the same for the whole client existence and never be reused.
+	var message1, message2, message3 []byte
+	var credID []byte
+
+	// The client starts, serializes the message, and sends it to the server.
+	{
+		c1 := client.RegistrationInit(password)
+		message1 = c1.Serialize()
+	}
+
+	// The server receives the encoded message, decodes it, interprets it, and returns its response.
+	{
+		request, err := server.Deserialize.RegistrationRequest(message1)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		// The server creates a database entry for the client and creates a credential identifier that must absolutely
+		// be unique among all clients.
+		credID = opaque.RandomBytes(64)
+		pks, err := server.Deserialize.DecodeAkePublicKey(serverPublicKey)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		// The server uses its public key and secret OPRF seed created at the setup.
+		response := server.RegistrationResponse(request, pks, credID, secretOprfSeed)
+
+		// The server responds with its serialized response.
+		message2 = response.Serialize()
+	}
+
+	// The client deserializes the responses, and sends back its final client record containing the envelope.
+	{
+		response, err := client.Deserialize.RegistrationResponse(message2)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		// The client produces its record and a client-only-known secret export_key, that the client can use for other purposes (e.g. encrypt
+		// information to store on the server, and that the server can't decrypt). We don't use in the example here.
+		record, _ := client.RegistrationFinalize(response, opaque.ClientRegistrationFinalizeOptions{
+			ClientIdentity: clientID,
+			ServerIdentity: serverID,
+		})
+		message3 = record.Serialize()
+	}
+
+	// Server registers the client record.
+	{
+		record, err := server.Deserialize.RegistrationRecord(message3)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		exampleClientRecord = &opaque.ClientRecord{
+			CredentialIdentifier: credID,
+			ClientIdentity:       clientID,
+			RegistrationRecord:   record,
+		}
+
+		fmt.Println("OPAQUE registration is easy!")
+
+		check1 := server.EnvelopeCheck(record, client, credID, secretOprfSeed, serverPublicKey, clientID, serverID)
+
+		fmt.Printf("Same! %+v", check1)
+		fmt.Println()
+	}
+
+	// Output: OPAQUE server initialized.
+	// OPAQUE registration is easy!
+}
+
 // Example_LoginKeyExchange demonstrates in a single function the interactions between a client and a server for the
 // login phase.
 // This is of course a proof-of-concept demonstration, as client and server execute separately.

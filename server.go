@@ -9,6 +9,7 @@
 package opaque
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -17,7 +18,9 @@ import (
 	"github.com/bytemare/opaque/internal"
 	"github.com/bytemare/opaque/internal/ake"
 	"github.com/bytemare/opaque/internal/encoding"
+	"github.com/bytemare/opaque/internal/keyrecovery"
 	"github.com/bytemare/opaque/internal/masking"
+	"github.com/bytemare/opaque/internal/oprf"
 	"github.com/bytemare/opaque/internal/tag"
 	"github.com/bytemare/opaque/message"
 )
@@ -266,4 +269,45 @@ func (s *Server) SetAKEState(state []byte) error {
 // SerializeState returns the internal state of the AKE server serialized to bytes.
 func (s *Server) SerializeState() []byte {
 	return s.Ake.SerializeState()
+}
+
+// EnvelopeCheck returns true or false if the password is nil.
+// TODO: empty password -> for the issue
+// TODO: weak password -> new issue, offline check
+func (s *Server) EnvelopeCheck(record *message.RegistrationRecord, c *Client, credentialIdentifier, oprfSeed []byte, serverPublicKey []byte, serverIdentity []byte, clientIdentity []byte) bool {
+	env := &keyrecovery.Envelope{}
+	envelope, err := env.DeserializeEnvelope(record.Envelope, c.conf)
+	if err != nil {
+		return false
+	}
+
+	m1 := c.OPRF.Blind([]byte(""), nil)                      // random blind
+	m2 := s.oprfResponse(m1, oprfSeed, credentialIdentifier) // TODO: check if we can do this for all, TBD
+	m3 := c.OPRF.Finalize(m2)
+
+	stretched := c.conf.KSF.Harden(m3, nil, c.conf.Group.ElementLength()) // if random-salt, it will be though
+	prk := c.conf.KDF.Extract([]byte(""), encoding.Concat(m3, stretched))
+	seed := c.conf.KDF.Expand(prk, encoding.SuffixString(envelope.Nonce, tag.ExpandPrivateKey), internal.SeedLength)
+	_, pku := oprf.IDFromGroup(c.conf.Group).DeriveKeyPair(seed, []byte(tag.DeriveDiffieHellmanKeyPair))
+	if clientIdentity == nil {
+		clientIdentity = pku.Encode()
+	}
+
+	if serverIdentity == nil {
+		serverIdentity = serverPublicKey
+	}
+
+	ctc := encoding.Concat3(
+		serverPublicKey,
+		encoding.EncodeVector(clientIdentity),
+		encoding.EncodeVector(serverIdentity),
+	)
+	authKey := c.conf.KDF.Expand(prk, encoding.SuffixString(envelope.Nonce, tag.AuthKey), c.conf.KDF.Size())
+	authTag := c.conf.MAC.MAC(authKey, encoding.Concat(envelope.Nonce, ctc)) // build the credentials
+
+	if bytes.Equal(envelope.AuthTag, authTag) {
+		return true
+	}
+
+	return false
 }
