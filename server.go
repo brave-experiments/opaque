@@ -58,6 +58,11 @@ type keyMaterial struct {
 	serverSecretKey *ecc.Scalar
 	serverPublicKey []byte
 	oprfSeed        []byte
+	oprfClientSeed  []byte
+}
+
+type OPRFSeedOptions struct {
+	OPRFSeed []byte
 }
 
 // NewServer returns a Server instantiation given the application Configuration.
@@ -84,49 +89,67 @@ func (s *Server) GetConf() *internal.Configuration {
 	return s.conf
 }
 
-func (s *Server) oprfResponse(element *ecc.Element, oprfSeed, credentialIdentifier []byte) *ecc.Element {
-	seed := s.conf.KDF.Expand(
-		oprfSeed,
-		encoding.SuffixString(credentialIdentifier, tag.ExpandOPRF),
-		internal.SeedLength,
-	)
+func (s *Server) oprfResponse(element *ecc.Element, credentialIdentifier []byte) (*ecc.Element, error) {
+	if s.keyMaterial == nil {
+		return nil, fmt.Errorf("key material must be specified")
+	}
+	seed := s.keyMaterial.oprfClientSeed
+	if seed == nil {
+		if s.keyMaterial.oprfSeed == nil {
+			return nil, fmt.Errorf("OPRF seed must be specified")
+		}
+		seed = s.conf.KDF.Expand(
+			s.keyMaterial.oprfSeed,
+			encoding.SuffixString(credentialIdentifier, tag.ExpandOPRF),
+			internal.SeedLength,
+		)
+	}
 	ku := s.conf.OPRF.DeriveKey(seed, []byte(tag.DeriveKeyPair))
 
-	return s.conf.OPRF.Evaluate(ku, element)
+	return s.conf.OPRF.Evaluate(ku, element), nil
 }
 
 // RegistrationResponse returns a RegistrationResponse message to the input RegistrationRequest message and given
 // identifiers.
 func (s *Server) RegistrationResponse(
 	req *message.RegistrationRequest,
-	serverPublicKey *ecc.Element,
-	credentialIdentifier, oprfSeed []byte,
-) *message.RegistrationResponse {
-	z := s.oprfResponse(req.BlindedMessage, oprfSeed, credentialIdentifier)
+	credentialIdentifier []byte,
+) (*message.RegistrationResponse, error) {
+	z, err := s.oprfResponse(req.BlindedMessage, credentialIdentifier)
+	if err != nil {
+		return nil, err
+	}
+
+	serverPublicKey := s.conf.Group.NewElement()
+	if err := serverPublicKey.Decode(s.keyMaterial.serverPublicKey); err != nil {
+		return nil, fmt.Errorf("invalid server public key: %w", err)
+	}
 
 	return &message.RegistrationResponse{
 		EvaluatedMessage: z,
 		Pks:              serverPublicKey,
-	}
+	}, nil
 }
 
 func (s *Server) credentialResponse(
 	req *message.CredentialRequest,
-	serverPublicKey []byte,
 	record *message.RegistrationRecord,
-	credentialIdentifier, oprfSeed, maskingNonce []byte,
-) *message.CredentialResponse {
-	z := s.oprfResponse(req.BlindedMessage, oprfSeed, credentialIdentifier)
+	credentialIdentifier, maskingNonce []byte,
+) (*message.CredentialResponse, error) {
+	z, err := s.oprfResponse(req.BlindedMessage, credentialIdentifier)
+	if err != nil {
+		return nil, err
+	}
 
 	maskingNonce, maskedResponse := masking.Mask(
 		s.conf,
 		maskingNonce,
 		record.MaskingKey,
-		serverPublicKey,
+		s.keyMaterial.serverPublicKey,
 		record.Envelope,
 	)
 
-	return message.NewCredentialResponse(z, maskingNonce, maskedResponse)
+	return message.NewCredentialResponse(z, maskingNonce, maskedResponse), nil
 }
 
 // GenerateKE2Options enable setting optional values for the session, which default to secure random values if not
@@ -166,7 +189,7 @@ func getGenerateKE2Options(options []GenerateKE2Options) (*ake.Options, []byte) 
 // - serverSecretKey is the server's secret AKE key.
 // - serverPublicKey is the server's public AKE key to the serverSecretKey.
 // - oprfSeed is the long-term OPRF input seed.
-func (s *Server) SetKeyMaterial(serverIdentity, serverSecretKey, serverPublicKey, oprfSeed []byte) error {
+func (s *Server) SetKeyMaterial(serverIdentity, serverSecretKey, serverPublicKey, oprfSeed []byte, oprfClientSeed []byte) error {
 	sks := s.conf.Group.NewScalar()
 	if err := sks.Decode(serverSecretKey); err != nil {
 		return fmt.Errorf("invalid server AKE secret key: %w", err)
@@ -176,7 +199,15 @@ func (s *Server) SetKeyMaterial(serverIdentity, serverSecretKey, serverPublicKey
 		return ErrZeroSKS
 	}
 
-	if len(oprfSeed) != s.conf.Hash.Size() {
+	if oprfSeed != nil {
+		if len(oprfSeed) != s.conf.Hash.Size() {
+			return ErrInvalidOPRFSeedLength
+		}
+	} else if oprfClientSeed != nil {
+		if len(oprfClientSeed) != internal.SeedLength {
+			return ErrInvalidOPRFSeedLength
+		}
+	} else {
 		return ErrInvalidOPRFSeedLength
 	}
 
@@ -193,6 +224,7 @@ func (s *Server) SetKeyMaterial(serverIdentity, serverSecretKey, serverPublicKey
 		serverSecretKey: sks,
 		serverPublicKey: serverPublicKey,
 		oprfSeed:        oprfSeed,
+		oprfClientSeed:  oprfClientSeed,
 	}
 
 	return nil
@@ -217,8 +249,11 @@ func (s *Server) GenerateKE2(
 
 	op, maskingNonce := getGenerateKE2Options(options)
 
-	response := s.credentialResponse(ke1.CredentialRequest, s.serverPublicKey,
-		record.RegistrationRecord, record.CredentialIdentifier, s.oprfSeed, maskingNonce)
+	response, err := s.credentialResponse(ke1.CredentialRequest,
+		record.RegistrationRecord, record.CredentialIdentifier, maskingNonce)
+	if err != nil {
+		return nil, err
+	}
 
 	identities := ake.Identities{
 		ClientIdentity: record.ClientIdentity,
